@@ -1,0 +1,143 @@
+<?php
+
+/**
+ * @file
+ * Page callbacks and functions for the Eloqua Subscription Center module.
+ */
+
+
+/**
+ * Primary page callback for managing subscriptions.
+ *
+ * @param string $contact_id
+ *   The Eloqua contact ID for whom we are loading/editing subscription details.
+ *
+ * @return
+ *   A Drupal form representing this Eloqua contact's subscription settings.
+ */
+function eloqua_subscription_center_page($contact_id) {
+  // Ensure that this never gets indexed.
+  drupal_add_html_head(array(
+    '#type' => 'html_tag',
+    '#tag' => 'meta',
+    '#attributes' => array(
+      'name' => 'robots',
+      'content' => 'noindex, nofollow, noarchive',
+    ),
+  ), 'eloqua_subscription_center_robots');
+
+  // Only respond if we're properly configured to use Eloqua's REST API.
+  if ($elqReq = eloqua_rest_api_client('2.0')) {
+    // The contact ID passed by Eloqua
+    if (preg_match_all ('/.*?(\\d+)/is', $contact_id, $matches)) {
+      // Cast the result to an integer to remove preceding 0s.
+      $contact_id = (int) $matches[1][0];
+    }
+
+    // Only respond with the form when a valid contact is returned.
+    if ($contact = $elqReq->getContact($contact_id)) {
+      $form_state = array();
+      $form_state['build_info']['args']['contact'] = $contact;
+      $form_state['build_info']['args']['subscriptions'] = $contact->getSubscriptions();
+
+      // Ensure that this page isn't cached.
+      drupal_page_is_cacheable(FALSE);
+
+      return drupal_build_form('eloqua_subscription_center_form', $form_state);
+    }
+    else {
+      // @todo Watchdog.
+    }
+  }
+  else {
+    // @todo Watchdog.
+  }
+
+  // If we're here, either the contact doesn't exist, or we're not configured to
+  // use the Eloqua REST API. Throw a 404.
+  return MENU_NOT_FOUND;
+}
+
+/**
+ * Form for managing Eloqua subscriptions.
+ */
+function eloqua_subscription_center_form($form, &$form_state) {
+  $contact = $form_state['build_info']['args']['contact'];
+  $subscriptions = $form_state['build_info']['args']['subscriptions'];
+  $defaultSub = variable_get('eloqua_subscription_center_default_status', TRUE);
+
+
+  // Eloqua form name to which this will be posted.
+  if ($elqFormName = variable_get('eloqua_subscription_center_form_name', '')) {
+    $form['elqFormName'] = array(
+      '#type' => 'hidden',
+      '#default_value' => $elqFormName,
+    );
+  }
+
+  // If configured, show the user's e-mail address.
+  $type = variable_get('eloqua_subscription_center_hide_email', FALSE) ? 'hidden' : 'textfield';
+  $form['email'] = array(
+    '#title' => t('Email address'),
+    '#default_value' => $contact->emailAddress,
+    '#type' => $type,
+    '#weight' => 0,
+    '#disabled' => TRUE,
+  );
+
+  // A fieldset for all relevant e-mail groups.
+  $form['email_groups'] = array(
+    '#title' => t('Email communications'),
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#weight' => 1,
+  );
+
+  // Iterate through all subscriptions and create radios for relevant groups.
+  foreach ($subscriptions as $sub) {
+    // Load any config overrides.
+    $config = eloqua_subscription_center_get_group_config($sub->getEmailGroupId());
+    unset($config['#default_value'], $config['#options'], $config['#type']);
+    $sub->setDefaultSubscriptionState($defaultSub);
+
+    // @todo Need a way to filter down to (or specifically exclude) certain groups.
+    if (!in_array($sub->getEmailGroupId(), array(47,43,42,12,31,40))) {
+      continue;
+    }
+
+    // Load values either from Eloqua, or from group config overrides.
+    $id = isset($config['#id']) ? $config['#id'] : $sub->getEmailGroupId();
+    $form['email_groups'][$id] = array(
+      '#title' => $sub->getEmailGroupName(),
+      '#description' => $sub->getEmailGroupDescription(),
+      '#type' => 'radios',
+      '#options' => array(TRUE => t('Subscribed'), FALSE => t('Unsubscribed')),
+      '#default_value' => (int) $sub->isSubscribed(),
+    );
+    unset($config['#id']);
+    $form['email_groups'][$id] = array_merge($form['email_groups'][$id], $config);
+  }
+
+  // Submit button.
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Update subscription'),
+    '#weight' => 10,
+  );
+
+  $form['#submit'][] = 'eloqua_subscription_center_api_integration';
+
+  return $form;
+}
+
+/**
+ * Submit handler to ensure this form integrates with Eloqua API, regardless of
+ * how the Eloqua API module is configured.
+ */
+function eloqua_subscription_center_api_integration($form, &$form_state) {
+  if (!isset($form_state['eloqua_values'])) {
+    $form_state['eloqua_values'] = array();
+  }
+
+  $form_state['eloqua_values'] = array_merge($form_state['eloqua_values'], $form_state['values']);
+}
