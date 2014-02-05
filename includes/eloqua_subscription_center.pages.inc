@@ -9,13 +9,17 @@
 /**
  * Primary page callback for managing subscriptions.
  *
+ * @param string $email_domain
+ *   The domain for the given contact's e-mail address. This value is used to
+ *   verify the authenticity of the contact's subscription management request.
+ *
  * @param string $contact_id
  *   The Eloqua contact ID for whom we are loading/editing subscription details.
  *
  * @return
  *   A Drupal form representing this Eloqua contact's subscription settings.
  */
-function eloqua_subscription_center_page($contact_id) {
+function eloqua_subscription_center_page($email_domain, $contact_id) {
   // Ensure that this never gets indexed.
   drupal_add_html_head(array(
     '#type' => 'html_tag',
@@ -36,6 +40,12 @@ function eloqua_subscription_center_page($contact_id) {
 
     // Only respond with the form when a valid contact is returned.
     if ($contact = $elqReq->getContact($contact_id)) {
+      // Check the provided e-mail domain with the contact's e-mail. If there's
+      // no match, do not return the form.
+      if (strpos($contact->emailAddress, '@' . $email_domain) === FALSE) {
+        return MENU_ACCESS_DENIED;
+      }
+
       $form_state = array();
       $form_state['build_info']['args']['contact'] = $contact;
       $form_state['build_info']['args']['subscriptions'] = $contact->getSubscriptions();
@@ -46,11 +56,13 @@ function eloqua_subscription_center_page($contact_id) {
       return drupal_build_form('eloqua_subscription_center_form', $form_state);
     }
     else {
-      // @todo Watchdog.
+      watchdog('eloqua subscription center', 'Unable to return a contact for the given ID %id.', array(
+        '%id' => $contact_id,
+      ), WATCHDOG_WARNING);
     }
   }
   else {
-    // @todo Watchdog.
+    watchdog('eloqua subscription center', 'Unable to instantiate an Eloqua Request object. Make sure Eloqua REST API is properly configured.', WATCHDOG_ERROR);
   }
 
   // If we're here, either the contact doesn't exist, or we're not configured to
@@ -78,7 +90,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
   // If configured, show the user's e-mail address.
   $type = variable_get('eloqua_subscription_center_hide_email', FALSE) ? 'hidden' : 'textfield';
   $form['email'] = array(
-    '#title' => t('Email address'),
+    '#title' => t('E-mail Address'),
     '#default_value' => $contact->emailAddress,
     '#type' => $type,
     '#weight' => 0,
@@ -87,7 +99,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
 
   // A fieldset for all relevant e-mail groups.
   $form['email_groups'] = array(
-    '#title' => t('Email communications'),
+    '#title' => t('E-mail Subscriptions'),
     '#type' => 'fieldset',
     '#collapsible' => FALSE,
     '#weight' => 1,
@@ -100,8 +112,8 @@ function eloqua_subscription_center_form($form, &$form_state) {
     unset($config['#default_value'], $config['#options'], $config['#type']);
     $sub->setDefaultSubscriptionState($defaultSub);
 
-    // @todo Need a way to filter down to (or specifically exclude) certain groups.
-    if (!in_array($sub->getEmailGroupId(), array(47,43,42,12,31,40))) {
+    // Only display subscription preferences for explicitly enabled groups.
+    if (!in_array($sub->getEmailGroupId(), eloqua_subscription_center_get_enabled_groups())) {
       continue;
     }
 
@@ -126,6 +138,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
   );
 
   $form['#submit'][] = 'eloqua_subscription_center_api_integration';
+  $form['#submit'][] = 'eloqua_subscription_center_responses';
 
   return $form;
 }
@@ -140,4 +153,25 @@ function eloqua_subscription_center_api_integration($form, &$form_state) {
   }
 
   $form_state['eloqua_values'] = array_merge($form_state['eloqua_values'], $form_state['values']);
+}
+
+/**
+ * Submit handler that handles successful form submission responses and actions.
+ */
+function eloqua_subscription_center_responses($form, &$form_state) {
+  $actions = variable_get('eloqua_subscription_center_form_responses', array());
+
+  // Confirmation message handling.
+  if (isset($actions['message']) && $actions['message'] === 'message') {
+    if ($message = variable_get('eloqua_subscription_center_confirmation_message', '')) {
+      drupal_set_message(filter_xss_admin($message), 'status');
+    }
+  }
+
+  // Confirmation redirect handling.
+  if (isset($actions['redirect']) && $actions['redirect'] === 'redirect') {
+    if ($redirect = variable_get('eloqua_subscription_center_confirmation_redirect', '')) {
+      $form_state['redirect'] = $redirect;
+    }
+  }
 }

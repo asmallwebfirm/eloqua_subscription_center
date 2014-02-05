@@ -35,6 +35,9 @@ function eloqua_subscription_center_uninstall() {
     'eloqua_subscription_center_title',
     'eloqua_subscription_center_hide_email',
     'eloqua_subscription_center_groups',
+    'eloqua_subscription_center_form_responses',
+    'eloqua_subscription_center_confirmation_message',
+    'eloqua_subscription_center_confirmation_redirect',
   );
   foreach ($variables as $variable) {
     variable_del($variable);

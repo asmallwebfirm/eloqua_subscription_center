@@ -10,13 +10,13 @@
  */
 function eloqua_subscription_center_menu() {
   // Page at which subscriptions can be managed.
-  $path = variable_get('eloqua_subscription_center_path', 'subscription-center/%');
+  $path = variable_get('eloqua_subscription_center_path', 'subscription-center/%/%');
   $path_parts = explode('/', $path);
   $items[$path] = array(
     'title' => filter_xss_admin(variable_get('eloqua_subscription_center_title', 'Subscriptions')),
     'type' => MENU_NORMAL_ITEM,
     'page callback' => 'eloqua_subscription_center_page',
-    'page arguments' => array(array_search('%', $path_parts)),
+    'page arguments' => array_keys($path_parts, '%'),
     'access callback' => TRUE,
     'file' => 'includes/eloqua_subscription_center.pages.inc',
   );
@@ -122,4 +122,28 @@ function eloqua_subscription_center_set_group_config($group_id, $config) {
   $groups = eloqua_subscription_center_get_group_configs();
   $groups[$group_id] = $config;
   variable_set('eloqua_subscription_center_groups', $groups);
+}
+
+
+/**
+ * Returns an array of internal Eloqua e-mail group IDs for which an admin has
+ * marked "allow subscription management for this e-mail group."
+ *
+ * @return array
+ *   An array of integers, representing "enabled" Eloqua e-mail groupx.
+ */
+function eloqua_subscription_center_get_enabled_groups() {
+  $enabled = &drupal_static(__FUNCTION__, FALSE);
+  $configs = eloqua_subscription_center_get_group_configs();
+
+  if ($enabled === FALSE) {
+    $enabled = array();
+    foreach ($configs as $id => $config) {
+      if (isset($config['#enabled']) && $config['#enabled']) {
+        $enabled[] = $id;
+      }
+    }
+  }
+
+  return $enabled;
 }

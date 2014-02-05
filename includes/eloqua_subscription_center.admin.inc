@@ -7,8 +7,9 @@
 
 
 /**
- * A token used to simplify the admin experience when defining the path alias.
+ * Tokens used to simplify the admin experience when defining the path alias.
  */
+define('ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN', '[#email_domain]');
 define('ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN', '[#contact_id]');
 
 
@@ -19,13 +20,16 @@ function eloqua_subscription_center_admin($form, &$form_state) {
   $form = array();
 
   // Configurable path alias where contacts can manage their subscriptions.
-  $path = variable_get('eloqua_subscription_center_path', 'subscription-center/%');
+  $path = variable_get('eloqua_subscription_center_path', 'subscription-center/%/%');
   $path = _eloqua_subscription_center_translate_path($path, 'to_admin');
   $form['eloqua_subscription_center_path'] = array(
     '#title' => t('Subscription center path'),
-    '#description' => t('A valid path at which contacts will manage their subscriptions; this string must contain the %token token, representing the unique ID of an Eloqua contact.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
-    )),
+    '#description' => t('A valid path at which contacts will manage their subscriptions.') .
+      t('This string must contain both the %domain_token token (representing the e-mail domain of the contact) and the %contact_token token (representing the unique ID of an Eloqua contact). These tokens must appear in that order and must appear as distinct parts of the path (e.g. separated by slashes).', array(
+        '%domain_token' => ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN,
+        '%contact_token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
+      )) .
+      t('Two tokens are used to increase security and privacy and to ensure customers and prospects are not able to simply increment their contact ID in the URL and see/manage the subscription details of another customer or prospect.'),
     '#type' => 'textfield',
     '#default_value' => $path,
     '#required' => TRUE,
@@ -71,8 +75,136 @@ function eloqua_subscription_center_admin($form, &$form_state) {
     '#default_value' => variable_get('eloqua_subscription_center_hide_email', FALSE),
   );
 
-  // @todo Need a fieldset + way to configure subscription group overrides.
-  // @todo Also need a way to configure filtering of subscription groups on the form.
+  // Field group to encapsulate form responses/actions.
+  $form['response'] = array(
+    '#title' => t('Form actions'),
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+  );
+
+  // Actions to take after successful subscription preference submission.
+  $form['response']['eloqua_subscription_center_form_responses'] = array(
+    '#title' => t('Actions'),
+    '#type' => 'checkboxes',
+    '#description' => t('Actions to be taken upon successful subscription preference submission.'),
+    '#options' => array(
+      'message' => t('Display a confirmation message'),
+      'redirect' => t('Redirect to a confirmation page'),
+    ),
+    '#default_value' => variable_get('eloqua_subscription_center_form_responses', array()),
+  );
+
+  // Message to be displayed upon form submission; displayed conditionally.
+  $form['response']['eloqua_subscription_center_confirmation_message'] = array(
+    '#title' => t('Confirmation message'),
+    '#type' => 'textfield',
+    '#description' => t('The message to be displayed to the user upon successful preference submission.'),
+    '#default_value' => variable_get('eloqua_subscription_center_confirmation_message', ''),
+    '#element_validate' => array('eloqua_subscription_center_message_validate'),
+    '#states' => array(
+      'visible' => array(
+        ':input[name="eloqua_subscription_center_form_responses[message]"]' => array('checked' => TRUE),
+      ),
+      'required' => array(
+        ':input[name="eloqua_subscription_center_form_responses[message]"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+
+  // Page to redirect to upon form submission; displayed conditionally.
+  $form['response']['eloqua_subscription_center_confirmation_redirect'] = array(
+    '#title' => t('Confirmation redirect'),
+    '#type' => 'textfield',
+    '#description' => t('An internal Drupal path or URL to which users will be redirected upon successul preference submission.'),
+    '#default_value' => variable_get('eloqua_subscription_center_confirmation_redirect', ''),
+    '#element_validate' => array('eloqua_subscription_center_redirect_validate'),
+    '#states' => array(
+      'visible' => array(
+        ':input[name="eloqua_subscription_center_form_responses[redirect]"]' => array('checked' => TRUE),
+      ),
+      'required' => array(
+        ':input[name="eloqua_subscription_center_form_responses[redirect]"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+
+  // Allow configuration of specific e-mail groups and their display.
+  if ($elqRequest = eloqua_rest_api_client('2.0')) {
+    if ($email_groups = $elqRequest->getEmailGroups()) {
+      // Create a collapsed fieldset that contains e-mail groups.
+      $form['eloqua_subscription_center_groups'] = array(
+        '#title' => t('E-mail groups'),
+        #'#type' => 'fieldset',
+        #'#collapsible' => TRUE,
+        #'#collapsed' => TRUE,
+        '#tree' => TRUE,
+        '#type' => 'vertical_tabs',
+      );
+
+      // Iterate through all returned e-mail groups and display settings forms.
+      foreach ($email_groups as $id => $group) {
+        // Default values.
+        $defaults = eloqua_subscription_center_get_group_config($id);
+        $title = isset($defaults['#title']) ? $defaults['#title'] : $group->getName();
+        $enabled = isset($defaults['#enabled']) ? $defaults['#enabled'] : FALSE;
+        $description = isset($defaults['#description']) ? $defaults['#description'] : $group->getDescription();
+        $weight = isset($defaults['#weight']) ? $defaults['#weight'] : 0;
+        $form_element_id = isset($defaults['#id']) ? $defaults['#id'] : $id;
+
+        // Identify this e-mail group.
+        $form['eloqua_subscription_center_groups'][$id] = array(
+          '#title' => $title,
+          '#type' => 'fieldset',
+          '#collapsible' => FALSE,
+          '#weight' => $weight,
+        );
+
+        // Whether or not to show or hide this group.
+        $form['eloqua_subscription_center_groups'][$id]['enabled'] = array(
+          '#title' => t('Allow subscription management for this e-mail group'),
+          '#type' => 'checkbox',
+          '#default_value' => $enabled,
+        );
+
+        // Provide the ability to override the title.
+        $form['eloqua_subscription_center_groups'][$id]['title'] = array(
+          '#title' => t('Display title'),
+          '#description' => t('The title used to identify this subscription group to end-users.'),
+          '#type' => 'textfield',
+          '#default_value' => $title,
+          '#required' => TRUE,
+        );
+
+        // Provide the ability to specify field element names.
+        $form['eloqua_subscription_center_groups'][$id]['id'] = array(
+          '#title' => t('Form element name'),
+          '#description' => t('Used as the parameter name when POSTing subscription preferences to Eloqua.'),
+          '#type' => 'textfield',
+          '#default_value' => $form_element_id,
+          '#required' => TRUE,
+        );
+
+        // Provide the ability to override the description.
+        $form['eloqua_subscription_center_groups'][$id]['description'] = array(
+          '#title' => t('Display description'),
+          '#description' => t('The description used to identify this subscription group to end-users.'),
+          '#type' => 'textfield',
+          '#default_value' => $description,
+        );
+
+        // Provide the ability to override the order (just a weight field).
+        $form['eloqua_subscription_center_groups'][$id]['weight'] = array(
+          '#title' => t('Order'),
+          '#description' => t('A number, indicating the sort order in which this group should appear on the page.'),
+          '#type' => 'textfield',
+          '#default_value' => $weight,
+        );
+      }
+
+      // Add a validation handler to handle variable/config preparation.
+      $form['#validate'][] = 'eloqua_subscription_center_prepare_group_configs';
+    }
+  }
 
   // Add custom validation and submission handlers; ensure ours come last.
   $form = system_settings_form($form);
@@ -89,7 +221,7 @@ function eloqua_subscription_center_path_validate($element, &$form_state, $form)
   form_set_value($element, trim($element['#value'], '/'), $form_state);
 
   // Before any new values are saved, temporarily store the existing path.
-  $form_state['_existing_path'] = variable_get('eloqua_subscription_center_path', 'subscription-center/%');
+  $form_state['_existing_path'] = variable_get('eloqua_subscription_center_path', 'subscription-center/%/%');
   $new_path_raw = $form_state['values']['eloqua_subscription_center_path'];
   $new_path = _eloqua_subscription_center_translate_path($new_path_raw, 'to_menu');
 
@@ -114,6 +246,59 @@ function eloqua_subscription_center_path_validate($element, &$form_state, $form)
 function eloqua_subscription_center_title_validate($element, &$form_state, $form) {
   // Before any new values are saved, temporarily store the existing title.
   $form_state['_existing_title'] = variable_get('eloqua_subscription_center_title', 'Subscriptions');
+}
+
+/**
+ * Validation handler for the Eloqua subscription center confirmation message.
+ */
+function eloqua_subscription_center_message_validate($element, &$form_state, $form) {
+  // This should only fire if confirmation message is a chosen response.
+  if (isset($form_state['values']['eloqua_subscription_center_form_responses']['message']) && $form_state['values']['eloqua_subscription_center_form_responses']['message'] === 'message') {
+    // Because #required is only set via #states, manually check for emptiness.
+    if (empty($element['#value'])) {
+      form_set_error($element['#name'], t('!name field is required.', array('!name' => $element['#title'])));
+    }
+  }
+  // If it's not a chosen response, wipe the value.
+  else {
+    form_set_value($element, '', $form_state);
+  }
+}
+
+/**
+ * Validation handler for the Eloqua subscription center form redirect value.
+ */
+function eloqua_subscription_center_redirect_validate($element, &$form_state, $form) {
+  // This should only fire if confirmation redirection is a chosen response.
+  if (isset($form_state['values']['eloqua_subscription_center_form_responses']['redirect']) && $form_state['values']['eloqua_subscription_center_form_responses']['redirect'] === 'redirect') {
+    // Because #required is only set via #states, manually check for emptiness.
+    if (empty($element['#value'])) {
+      form_set_error($element['#name'], t('!name field is required.', array('!name' => $element['#title'])));
+    }
+  }
+  // If it's not a chosen response, wipe the value.
+  else {
+    form_set_value($element, '', $form_state);
+  }
+}
+
+/**
+ * Validation handler that prepares e-mail group configs.
+ */
+function eloqua_subscription_center_prepare_group_configs($form, &$form_state) {
+  // Retrieve the input and unset it from the actual form state.
+  $input = $form_state['values']['eloqua_subscription_center_groups'];
+  unset ($form_state['values']['eloqua_subscription_center_groups']);
+
+  $writethrough = array();
+  foreach ($input as $id => $config) {
+    $writethrough[$id] = array();
+    foreach ($config as $key => $value) {
+      $writethrough[$id]['#' . $key] = $value;
+    }
+  }
+
+  $form_state['values']['eloqua_subscription_center_groups'] = $writethrough;
 }
 
 /**
@@ -151,13 +336,24 @@ function eloqua_subscription_center_admin_submit($form, &$form_state) {
  *   The $path string translated as specified.
  */
 function _eloqua_subscription_center_translate_path($path, $direction) {
+  $wildcards = array('%', '%');
+  $tokens = array(
+    ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN,
+    ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
+  );
+
   switch ($direction) {
     case 'to_menu':
-      $path = str_replace(ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN, '%', $path);
+      $path = str_replace($tokens, $wildcards, $path);
       break;
 
     case 'to_admin':
-      $path = str_replace('%', ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN, $path);
+      $path_parts = explode('/', $path);
+      $keys = array_keys($path_parts, '%');
+      foreach ($keys as $n => $key) {
+        $path_parts[$key] = $tokens[$n];
+      }
+      $path = implode('/', $path_parts);
       break;
   }
 
@@ -175,42 +371,45 @@ function _eloqua_subscription_center_translate_path($path, $direction) {
  *   will be returned, otherwise an error message will be returned.
  */
 function _eloqua_subscription_center_invalid_token_placement($path) {
-  $token_pos = strpos($path, ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN);
-  $token_len = strlen(ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN);
+  $domain_pos = strpos($path, ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN);
+  $domain_len = strlen(ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN);
+  $contact_pos = strpos($path, ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN);
+  $contact_len = strlen(ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN);
 
   // Ensure that the given path contains the contact ID token.
-  if ($token_pos === FALSE) {
-    return t('The path you specified did not include the %token token.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
+  if ($domain_pos === FALSE || $contact_pos === FALSE) {
+    return t('The path you specified did not include one or both of the required tokens: %domain_token, %contact_token.', array(
+      '%domain_token' => ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN,
+      '%contact_token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
     ));
   }
 
-  // The token must not be the first item in the path part.
-  if ($token_pos === 0) {
-    return t('The %token token cannot be at the beginning of the path.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
+  // Ensure that the domain token always precedes the contact token.
+  if ($domain_pos > $contact_pos) {
+    return t('The domain token %domain_token must always come before the %contact_token token in the path.', array(
+      '%domain_token' => ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN,
+      '%contact_token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
     ));
+  }
+
+  // Tokens must never be the first item in the path part.
+  if ($domain_pos === 0 || $contact_pos === 0) {
+    return t('The path must not begin with a token.');
   }
 
   // The character immediately preceding the token must be a slash.
-  if ($path[$token_pos - 1] !== '/') {
-    return t('The %token token must be a distinct part of the path. Make sure that it is placed between slashes or a slash and the end of the path.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
-    ));
+  if ($path[$domain_pos - 1] !== '/' || $path[$contact_pos - 1] !== '/') {
+    return t('Tokens must be distinct parts of the path. Make sure that they are placed between slashes and/or are placed at the end of the path.');
   }
 
   // The token must be at the path's end, or be immediately followed by a slash.
-  if ($token_pos + $token_len != strlen($path) && $path[$token_pos + $token_len] !== '/') {
-    return t('The %token token must be a distinct part of the path. Make sure that it is placed between slashes or a slash and the end of the path.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
-    ));
+  if (($domain_pos + $domain_len != strlen($path) && $path[$domain_pos + $domain_len] !== '/') || ($contact_pos + $contact_len != strlen($path) && $path[$contact_pos + $contact_len] !== '/')) {
+    return t('Tokens must be distinct parts of the path. Make sure that they are placed between slashes and/or are placed at the end of the path.');
   }
 
   // The path must not contain the token more than once.
-  if (substr_count($path, ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN) > 1) {
-    return t('The %token token must not occur more than once in the specified path.', array(
-      '%token' => ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN,
-    ));
+  if (substr_count($path, ELOQUA_SUBSCRIPTION_CENTER_EMAIL_DOMAIN_TOKEN) > 1 || substr_count($path, ELOQUA_SUBSCRIPTION_CENTER_CONTACT_ID_TOKEN) > 1) {
+    return t('Tokens must not occur more than once in the specified path.');
   }
 
   return FALSE;
