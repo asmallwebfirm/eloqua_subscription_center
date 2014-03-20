@@ -130,7 +130,7 @@ function eloqua_subscription_center_admin($form, &$form_state) {
 
   // Allow configuration of specific e-mail groups and their display.
   if ($elqRequest = eloqua_rest_api_client('2.0')) {
-    if ($email_groups = $elqRequest->getEmailGroups()) {
+    if ($email_groups = eloqua_subscription_center_get_group_configs()) {
       // Create a collapsed fieldset that contains e-mail groups.
       $form['eloqua_subscription_center_groups'] = array(
         '#title' => t('E-mail groups'),
@@ -143,13 +143,13 @@ function eloqua_subscription_center_admin($form, &$form_state) {
 
       // Iterate through all returned e-mail groups and display settings forms.
       foreach ($email_groups as $id => $group) {
+
         // Default values.
-        $defaults = eloqua_subscription_center_get_group_config($id);
-        $title = isset($defaults['#title']) ? $defaults['#title'] : $group->getName();
-        $enabled = isset($defaults['#enabled']) ? $defaults['#enabled'] : FALSE;
-        $description = isset($defaults['#description']) ? $defaults['#description'] : $group->getDescription();
-        $weight = isset($defaults['#weight']) ? $defaults['#weight'] : 0;
-        $form_element_id = isset($defaults['#id']) ? $defaults['#id'] : $id;
+        $title = isset($group['#title']) ? $group['#title'] : NULL;
+        $enabled = isset($group['#enabled']) ? $group['#enabled'] : FALSE;
+        $description = isset($group['#description']) ? $group['#description'] : NULL;
+        $weight = isset($group['#weight']) ? $group['#weight'] : 0;
+        $form_element_id = isset($group['#id']) ? $group['#id'] : $id;
 
         // Identify this e-mail group.
         $form['eloqua_subscription_center_groups'][$id] = array(
