@@ -49,6 +49,58 @@ function eloqua_subscription_center_permission() {
 }
 
 /**
+ * Implements hook_i18n_string_info()
+ */
+function eloqua_subscription_center_i18n_string_info() {
+  $groups['eloqua'] = array(
+    'title' => t('Eloqua'),
+    'description' => t('Eloqua related strings.'),
+    'format' => FALSE, // This group doesn't have strings with format
+    'list' => TRUE, // This group can list all strings
+  );
+  return $groups;
+}
+
+/**
+ * Implements hook_i18n_string_list().
+ */
+function eloqua_subscription_center_i18n_list($group) {
+  if ($group == 'eloqua' || $group == 'all') {
+    $strings = array();
+
+    $groups = variable_get('eloqua_subscription_center_groups', array());
+    $enabled = eloqua_subscription_center_get_enabled_groups();
+
+    foreach ($groups as $eid => $element) {
+      if (in_array($eid, $enabled)) {
+        $id = $element['#id'];
+        $title = $element['#title'];
+        $description = $element['#description'];
+
+        $strings['eloqua']['form']['subscription'][$id] = array(
+          'title' => $title,
+          'description' => $description,
+        );
+      }
+    }
+    return $strings;
+  }
+}
+
+/**
+ * Implements hook_i18n_string_refresh().
+ *
+ * Refresh translations for all generated strings, either retrieved from Eloqua
+ * or user overridden via admin config.
+ */
+function eloqua_subscription_center_i18n_string_refresh($group) {
+  if ($group == 'eloqua') {
+    eloqua_subscription_center_i18n_update_strings();
+  }
+  return TRUE;
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  *
  * Enables the Eloqua subscription center form for integration with Eloqua API.
@@ -146,4 +198,41 @@ function eloqua_subscription_center_get_enabled_groups() {
   }
 
   return $enabled;
+}
+
+/**
+ * i18n helper function. Returns a string passed through i18n_string()
+ * with default textgroup eloqua or just a regular string.
+ *
+ * @return string
+ *   A translated string through i18n_string or a regular string.
+ */
+function eloqua_subscription_center_translate($name, $string, $langcode = NULL, $textgroup = 'eloqua') {
+  return function_exists('i18n_string') ? i18n_string($textgroup . ':' . $name, $string, array('langcode' => $langcode, 'update' => TRUE)) : $string;
+}
+
+/**
+ * i18n helper function. Refreshes strings from enabled email groups
+ * when a refresh is triggered through admin/config/regional/translate/i18n_string.
+ *
+ * @see eloqua_subscription_center_i18n_string_refresh
+ */
+function eloqua_subscription_center_i18n_update_strings() {
+  if (!function_exists('i18n_string_update')) {
+    return;
+  }
+
+  $groups = variable_get('eloqua_subscription_center_groups', array());
+  $enabled = eloqua_subscription_center_get_enabled_groups();
+
+  foreach ($groups as $eid => $element) {
+    if (in_array($eid, $enabled)) {
+      $id = $element['#id'];
+      $title = $element['#title'];
+      $description = $element['#description'];
+
+      i18n_string_update("eloqua:form:subscription:$id:title", $title);
+      i18n_string_update("eloqua:form:subscription:$id:description", $description);
+    }
+  }
 }

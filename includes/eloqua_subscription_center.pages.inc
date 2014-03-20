@@ -78,7 +78,6 @@ function eloqua_subscription_center_form($form, &$form_state) {
   $subscriptions = $form_state['build_info']['args']['subscriptions'];
   $defaultSub = variable_get('eloqua_subscription_center_default_status', TRUE);
 
-
   // Eloqua form name to which this will be posted.
   if ($elqFormName = variable_get('eloqua_subscription_center_form_name', '')) {
     $form['elqFormName'] = array(
@@ -128,6 +127,11 @@ function eloqua_subscription_center_form($form, &$form_state) {
     );
     unset($config['#id']);
     $form['email_groups'][$id] = array_merge($form['email_groups'][$id], $config);
+  }
+
+  foreach(element_children($form['email_groups']) as $key) {
+    $form['email_groups'][$key]['#title'] = eloqua_subscription_center_translate('form:subscription:' . $key . ':title', $form['email_groups'][$key]['#title']);
+    $form['email_groups'][$key]['#description'] = eloqua_subscription_center_translate('form:subscription:' . $key . ':description', $form['email_groups'][$key]['#description']);
   }
 
   // Submit button.
