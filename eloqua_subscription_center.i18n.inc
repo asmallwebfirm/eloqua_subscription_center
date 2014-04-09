@@ -20,7 +20,7 @@ function eloqua_subscription_center_i18n_string_info() {
 /**
  * Implements hook_i18n_string_list().
  */
-function eloqua_subscription_center_i18n_list($group) {
+function eloqua_subscription_center_i18n_string_list($group) {
   if ($group == 'eloqua' || $group == 'all') {
     $strings = array();
 
