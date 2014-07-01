@@ -32,6 +32,8 @@ function eloqua_subscription_center_page($email_domain, $contact_id) {
 
   // Only respond if we're properly configured to use Eloqua's REST API.
   if ($elqReq = eloqua_rest_api_client('2.0')) {
+    $contacts = $elqReq->api('contacts');
+
     // The contact ID passed by Eloqua
     if (preg_match_all ('/.*?(\\d+)/is', $contact_id, $matches)) {
       // Cast the result to an integer to remove preceding 0s.
@@ -39,16 +41,17 @@ function eloqua_subscription_center_page($email_domain, $contact_id) {
     }
 
     // Only respond with the form when a valid contact is returned.
-    if ($contact = $elqReq->getContact($contact_id)) {
+    if ($contact = $contacts->show($contact_id)) {
       // Check the provided e-mail domain with the contact's e-mail. If there's
       // no match, do not return the form.
-      if (strpos($contact->emailAddress, '@' . $email_domain) === FALSE) {
+      if (strpos($contact['emailAddress'], '@' . $email_domain) === FALSE) {
         return MENU_ACCESS_DENIED;
       }
 
+      $subscriptions = $contacts->subscriptions($contact_id);
       $form_state = array();
       $form_state['build_info']['args']['contact'] = $contact;
-      $form_state['build_info']['args']['subscriptions'] = $contact->getSubscriptions();
+      $form_state['build_info']['args']['subscriptions'] = $subscriptions['elements'];
 
       // Ensure that this page isn't cached.
       drupal_page_is_cacheable(FALSE);
@@ -90,7 +93,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
   $type = variable_get('eloqua_subscription_center_hide_email', FALSE) ? 'hidden' : 'textfield';
   $form['email'] = array(
     '#title' => t('E-mail Address'),
-    '#default_value' => $contact->emailAddress,
+    '#default_value' => $contact['emailAddress'],
     '#type' => $type,
     '#weight' => 0,
     '#disabled' => TRUE,
@@ -107,23 +110,25 @@ function eloqua_subscription_center_form($form, &$form_state) {
   // Iterate through all subscriptions and create radios for relevant groups.
   foreach ($subscriptions as $sub) {
     // Load any config overrides.
-    $config = eloqua_subscription_center_get_group_config($sub->getEmailGroupId());
+    $config = eloqua_subscription_center_get_group_config($sub['emailGroup']['id']);
     unset($config['#default_value'], $config['#options'], $config['#type']);
-    $sub->setDefaultSubscriptionState($defaultSub);
+    if (!isset($sub['isSubscribed'])) {
+      $sub['isSubscribed'] = $defaultSub;
+    }
 
     // Only display subscription preferences for explicitly enabled groups.
-    if (!in_array($sub->getEmailGroupId(), eloqua_subscription_center_get_enabled_groups())) {
+    if (!in_array($sub['emailGroup']['id'], eloqua_subscription_center_get_enabled_groups())) {
       continue;
     }
 
     // Load values either from Eloqua, or from group config overrides.
     $id = isset($config['#id']) ? $config['#id'] : $sub->getEmailGroupId();
     $form['email_groups'][$id] = array(
-      '#title' => $sub->getEmailGroupName(),
-      '#description' => $sub->getEmailGroupDescription(),
+      '#title' => $sub['emailGroup']['name'],
+      '#description' => $sub['emailGroup']['description'],
       '#type' => 'radios',
       '#options' => array(TRUE => t('Subscribed'), FALSE => t('Unsubscribed')),
-      '#default_value' => (int) $sub->isSubscribed(),
+      '#default_value' => (bool) $sub['isSubscribed'],
     );
     unset($config['#id']);
     $form['email_groups'][$id] = array_merge($form['email_groups'][$id], $config);
