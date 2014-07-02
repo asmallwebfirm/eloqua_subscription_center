@@ -112,7 +112,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
     // Load any config overrides.
     $config = eloqua_subscription_center_get_group_config($sub['emailGroup']['id']);
     unset($config['#default_value'], $config['#options'], $config['#type']);
-    if (!isset($sub['isSubscribed'])) {
+    if (!array_key_exists('isSubscribed', $sub)) {
       $sub['isSubscribed'] = $defaultSub;
     }
 
@@ -122,13 +122,13 @@ function eloqua_subscription_center_form($form, &$form_state) {
     }
 
     // Load values either from Eloqua, or from group config overrides.
-    $id = isset($config['#id']) ? $config['#id'] : $sub->getEmailGroupId();
+    $id = isset($config['#id']) ? $config['#id'] : $sub['emailGroup']['id'];
     $form['email_groups'][$id] = array(
       '#title' => $sub['emailGroup']['name'],
       '#description' => $sub['emailGroup']['description'],
       '#type' => 'radios',
       '#options' => array(TRUE => t('Subscribed'), FALSE => t('Unsubscribed')),
-      '#default_value' => (bool) $sub['isSubscribed'],
+      '#default_value' => strtolower($sub['isSubscribed']) === 'true' ? 1 : 0,
     );
     unset($config['#id']);
     $form['email_groups'][$id] = array_merge($form['email_groups'][$id], $config);
