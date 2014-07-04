@@ -48,7 +48,7 @@ function eloqua_subscription_center_page($email_domain, $contact_id) {
         return MENU_ACCESS_DENIED;
       }
 
-      $subscriptions = $contacts->subscriptions($contact_id);
+      $subscriptions = $contacts->subscriptions($contact_id)->search('*');
       $form_state = array();
       $form_state['build_info']['args']['contact'] = $contact;
       $form_state['build_info']['args']['subscriptions'] = $subscriptions['elements'];
