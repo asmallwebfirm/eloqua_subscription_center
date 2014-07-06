@@ -2,6 +2,6 @@ name = Eloqua Subscription Center
 description = Provides a way for Eloqua contacts to manage their e-mail group subscriptions from a Drupal site.
 package = Eloqua
 core = 7.x
-
 dependencies[] = eloqua_api
 dependencies[] = eloqua_rest_api
+configure = admin/config/system/eloqua-subscription-center
