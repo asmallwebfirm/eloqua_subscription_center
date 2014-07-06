@@ -1,5 +1,5 @@
 name = Eloqua Subscription Center
-description = Methods for interacting with the Eloqua REST API
+description = Provides a way for Eloqua contacts to manage their e-mail group subscriptions from a Drupal site.
 package = Eloqua
 core = 7.x
 
