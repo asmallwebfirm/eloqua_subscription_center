@@ -1,0 +1,237 @@
+<?php
+
+/**
+ * @file
+ * SimpleTest tests for the Eloqua Subscription Center module.
+ */
+
+
+/**
+ * Unit tests for Eloqua Subscription Center.
+ */
+class EloquaSubscriptionCenterUnitTest extends DrupalUnitTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Eloqua Subscription Center unit tests',
+      'description' => 'Unit tests for Eloqua Subscription Center API calls.',
+      'group' => 'Eloqua',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+
+    // Attempt to load all necessary classes manually. This syntax is necessary
+    // because module_load_include() does not work without a DB. Order matters
+    // because require_once will call the autoloader, which touches the DB.
+    require_once(__DIR__ . '/eloqua_subscription_center.module');
+  }
+
+  /**
+   * Creates necessary tables for testing functions involving variable_set().
+   * Blasphemous, I know.
+   */
+  protected function createVariableTable() {
+    // Create the variable table.
+    Database::getConnection($this->target, $this->key)->schema()->createTable('variable', array(
+      'fields' => array(
+        'name' => array(
+          'type' => 'varchar',
+          'length' => 128,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'value' => array(
+          'type' => 'blob',
+          'not null' => TRUE,
+          'size' => 'big',
+          'translatable' => TRUE,
+        ),
+      ),
+      'primary key' => array('name'),
+    ));
+    // Also create the cache_bootstrap table.
+    Database::getConnection($this->target, $this->key)->schema()->createTable('cache_bootstrap', array(
+      'fields' => array(
+        'cid' => array(
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'data' => array(
+          'type' => 'blob',
+          'not null' => FALSE,
+          'size' => 'big',
+        ),
+        'expire' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'created' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'serialized' => array(
+          'type' => 'int',
+          'size' => 'small',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+      ),
+      'indexes' => array(
+        'expire' => array('expire'),
+      ),
+      'primary key' => array('cid'),
+    ));
+  }
+
+  /**
+   * Cleans up tables created for testing variable_set() related functions.
+   */
+  protected function dropVariableTable() {
+    Database::getConnection($this->target, $this->key)->schema()->dropTable('variable');
+    Database::getConnection($this->target, $this->key)->schema()->dropTable('cache_bootstrap');
+  }
+
+  /**
+   * @var string
+   * @see EloquaSubscriptionCenterUnitTest::createVariableTable()
+   */
+  protected $target = 'DatabaseConnectionUnitTest';
+
+  /**
+   * @var string
+   * @see EloquaSubscriptionCenterUnitTest::createVariableTable()
+   */
+  protected $key = 'default';
+
+  /**
+   * Fake group configuration for unit testing purposes.
+   * @var array
+   */
+  protected $group_configs = array(
+    42 => array(
+      'key' => 'value',
+    ),
+    43 => array(
+      'key' => 'value',
+      '#enabled' => TRUE,
+    ),
+    44 => array(
+      'key' => 'value',
+      '#enabled' => FALSE,
+    ),
+  );
+
+  /**
+   * Ensure eloqua_subscription_center_get_group_configs() returns as expected.
+   */
+  function testShouldGetGroupConfigsFromGlobalVar() {
+    $GLOBALS['conf']['eloqua_subscription_center_groups'] = $this->group_configs;
+
+    // Ensure the full config is returned from the global variable state.
+    $configs = eloqua_subscription_center_get_group_configs();
+    $this->assertEqual($configs, $this->group_configs, 'Group configs getter returned as expected.');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_get_group_config() returns full group.
+   */
+  function testShouldGetFullGroupConfig() {
+    $GLOBALS['conf']['eloqua_subscription_center_groups'] = $this->group_configs;
+
+    // Ensure the individual config is returned from the global variable state.
+    $config = eloqua_subscription_center_get_group_config(42);
+    $this->assertEqual($config, $this->group_configs[42], 'Group config getter returned as expected.');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_get_group_config() returns group key.
+   */
+  function testShouldGetGroupConfigByKey() {
+    $GLOBALS['conf']['eloqua_subscription_center_groups'] = $this->group_configs;
+
+    // Ensure the individual config is returned from the global variable state.
+    $config = eloqua_subscription_center_get_group_config(42, 'key');
+    $this->assertEqual($config, $this->group_configs[42]['key'], 'Group config getter (by key) returned as expected.');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_get_group_config() returns empty array.
+   */
+  function testShouldGetEmptyArrayGroupConfig() {
+    $GLOBALS['conf']['eloqua_subscription_center_groups'] = $this->group_configs;
+
+    // Ensure the individual config is returned from the global variable state.
+    $config = eloqua_subscription_center_get_group_config(12);
+    $this->assertEqual($config, array(), 'Group config getter returned empty array for non-existent group.');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_get_enabled_groups() can have enabled
+   * groups injected via drupal_static().
+   */
+  function testShouldAllowDrupalStaticInjectionEnabledGroups() {
+    $mock_static = &drupal_static('eloqua_subscription_center_get_enabled_groups', FALSE);
+    $mock_static = $this->group_configs;
+
+    // Ensure the enabled groups array can be injected.
+    $groups = eloqua_subscription_center_get_enabled_groups();
+    $this->assertEqual($groups, $mock_static, 'Enabled groups are injectable via drupal_static().');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_get_enabled_groups() returns the expected
+   * enabled groups only.
+   */
+  function testShouldReturnExpecedEnabledGroups() {
+    $GLOBALS['conf']['eloqua_subscription_center_groups'] = $this->group_configs;
+
+    // Ensure only groups that are enabled are returned.
+    $groups = eloqua_subscription_center_get_enabled_groups();
+    $this->assertIdentical(count($groups), 1, 'Returned exactly 1 enabled group.');
+    $this->assertTrue(array_search(43, $groups) === 0, 'Returned group is the expected group.');
+
+    // Ensure the function is idempotent.
+    $groups = eloqua_subscription_center_get_enabled_groups();
+    $this->assertIdentical(count($groups), 1, 'Returned exactly 1 enabled group.');
+    $this->assertTrue(array_search(43, $groups) === 0, 'Returned group is the expected group.');
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_set_group_configs() sets configs as
+   * expected.
+   */
+  function testShouldSetGroupConfigs() {
+    $this->createVariableTable();
+
+    // Ensure that group configs are set as expected.
+    eloqua_subscription_center_set_group_configs($this->group_configs);
+    $this->assertEqual($GLOBALS['conf']['eloqua_subscription_center_groups'], $this->group_configs, 'Set group configs as expected.');
+
+    $this->dropVariableTable();
+  }
+
+  /**
+   * Ensure eloqua_subscription_center_set_group_configs() sets individual
+   * configurations as expected.
+   */
+  function testShouldSetGroupConfig() {
+    $this->createVariableTable();
+    $expected = array(
+      '#enabled' => TRUE,
+      'key' => 'value',
+    );
+
+    // Ensure that group configs are set as expected.
+    eloqua_subscription_center_set_group_config(50, $expected);
+    $this->assertEqual($GLOBALS['conf']['eloqua_subscription_center_groups'][50], $expected, 'Set group config as expected.');
+
+    $this->dropVariableTable();
+  }
+
+}

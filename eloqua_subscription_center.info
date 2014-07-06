@@ -4,4 +4,5 @@ package = Eloqua
 core = 7.x
 dependencies[] = eloqua_api
 dependencies[] = eloqua_rest_api
+files[] = eloqua_subscription_center.test
 configure = admin/config/system/eloqua-subscription-center
