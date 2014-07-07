@@ -627,4 +627,72 @@ class EloquaSubscriptionCenterAdminConfigTest extends EloquaSubscriptionCenterBe
     $this->assertEqual(variable_get($var, array()), array('redirect' => 'redirect', 'message' => 'message'), 'Message an redirect flags saved as expected.');
   }
 
+  /**
+   * Test e-mail group subscription configurations.
+   */
+  function testEmailGroupSubscriptionConfigurations() {
+    // Set configurations and login as admin.
+    eloqua_subscription_center_set_group_configs($this->configurations);
+    $this->drupalLogin($this->admin);
+    $this->drupalGet('admin/config/system/eloqua-subscription-center');
+    $defaults = array(
+      'eloqua_subscription_center_form_name' => 'testform',
+      // Needed to get around validation error unrelated to this test.
+      'eloqua_subscription_center_groups[2][title]' => 'Title',
+    );
+
+    // Loop through configurations and ensure fields are populated as expected.
+    $fields = array('enabled', 'title', 'id', 'description', 'weight');
+    foreach ($this->configurations as $id => $config) {
+      foreach ($fields as $field) {
+        $name = 'eloqua_subscription_center_groups[' . $id . '][' . $field . ']';
+        $value = isset($config['#' . $field]) ? $config['#' . $field] : NULL;
+        $this->assertFieldByName($name, $value, format_string('Found %field field with value "%value" for group %group.', array(
+          '%field' => $field,
+          '%value' => $value,
+          '%group' => $id,
+        )));
+      }
+    }
+
+    // Update all values subscription group 1.
+    $edit = array();
+    foreach ($fields as $field) {
+      $name = 'eloqua_subscription_center_groups[1][' . $field . ']';
+      switch ($field) {
+        case 'title':
+        case 'id':
+        case 'description':
+          $edit[$name] = $this->randomName(15);
+          break;
+
+        case 'weight':
+          $edit[$name] = -1;
+          break;
+
+        case 'enabled':
+          $edit[$name] = TRUE;
+          break;
+      }
+    }
+    $this->drupalPost(NULL, $edit + $defaults, 'Save configuration');
+
+    // Ensure the values were saved as expected and are displayed as expected.
+    $this->assertText('The configuration options have been saved.', 'Confirmation message shown.');
+    foreach ($fields as $field) {
+      $name = 'eloqua_subscription_center_groups[1][' . $field . ']';
+
+      $this->assertEqual(eloqua_subscription_center_get_group_config(1, '#' . $field), $edit[$name], format_string('The %field field was saved properly with value %value.', array(
+        '%field' => $field,
+        '%value' => $edit[$name],
+      )));
+    }
+    foreach ($edit as $name => $value) {
+      $this->assertFieldByName($name, $value, format_string('The %name field was loaded correctly on the page with value %value.', array(
+        '%name' => $name,
+        '%value' => $value,
+      )));
+    }
+  }
+
 }

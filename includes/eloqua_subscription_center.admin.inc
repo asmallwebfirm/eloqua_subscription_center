@@ -292,9 +292,11 @@ function eloqua_subscription_center_prepare_group_configs($form, &$form_state) {
 
   $writethrough = array();
   foreach ($input as $id => $config) {
-    $writethrough[$id] = array();
-    foreach ($config as $key => $value) {
-      $writethrough[$id]['#' . $key] = $value;
+    if (is_array($config)) {
+      $writethrough[$id] = array();
+      foreach ($config as $key => $value) {
+        $writethrough[$id]['#' . $key] = $value;
+      }
     }
   }
 
