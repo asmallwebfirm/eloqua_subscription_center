@@ -113,7 +113,7 @@ function eloqua_subscription_center_form($form, &$form_state) {
     $config = eloqua_subscription_center_get_group_config($sub['emailGroup']['id']);
     unset($config['#default_value'], $config['#options'], $config['#type']);
     if (!array_key_exists('isSubscribed', $sub)) {
-      $sub['isSubscribed'] = $defaultSub;
+      $sub['isSubscribed'] = $defaultSub ? 'true' : 'false';
     }
 
     // Only display subscription preferences for explicitly enabled groups.

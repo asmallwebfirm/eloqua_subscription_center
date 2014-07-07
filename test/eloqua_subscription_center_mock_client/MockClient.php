@@ -14,6 +14,12 @@ class MockElomentaryClient {
   protected $active_api = '';
 
   /**
+   * Tracks the current contact ID when looking at subscriptions.
+   * @var int
+   */
+  protected $subscription_cid = 0;
+
+  /**
    * Stores contact data for behaviour tests.
    * @var array
    */
@@ -38,6 +44,7 @@ class MockElomentaryClient {
    */
   public function subscriptions($id) {
     $this->active_api = 'subscriptions';
+    $this->subscription_cid = $id;
     return $this;
   }
 
@@ -59,7 +66,39 @@ class MockElomentaryClient {
   public function search($search, $options = array()) {
     switch ($this->active_api) {
       case 'subscriptions':
-        return array('elements' => array());
+        return array('elements' => array(
+          1 => array(
+            'type' => 'ContactEmailSubscription',
+            'contactId' => $this->subscription_cid,
+            'emailGroup' => array(
+              'type' => 'EmailGroup',
+              'id' => 1,
+              'name' => 'This should be hidden',
+              'description' => 'This test group should not be enabled.',
+            ),
+          ),
+          2 => array(
+            'type' => 'ContactEmailSubscription',
+            'contactId' => $this->subscription_cid,
+            'emailGroup' => array(
+              'type' => 'EmailGroup',
+              'id' => 2,
+              'name' => 'Visible, default subscribed',
+              'description' => 'This is the description from Eloqua.',
+            ),
+            'isSubscribed' => 'true',
+          ),
+          3 => array(
+            'type' => 'ContactEmailSubscription',
+            'contactId' => $this->subscription_cid,
+            'emailGroup' => array(
+              'type' => 'EmailGroup',
+              'id' => 3,
+              'name' => 'Visible and overridden',
+              'description' => 'This description should be overridden.',
+            ),
+          ),
+        ));
         break;
     }
   }

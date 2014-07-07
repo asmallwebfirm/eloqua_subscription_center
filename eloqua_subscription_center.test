@@ -344,4 +344,63 @@ class EloquaSubscriptionCenterEndUserTest extends EloquaSubscriptionCenterBehavi
     $this->assertText('Subscriptions saved successfully.', 'Triggered message contained expected text.');
   }
 
+  /**
+   * Test subscription groups shown to end-users.
+   */
+  function testSubscriptionGroupDisplay() {
+    // Get subscriptions from mock Eloqua API.
+    require_once('test/eloqua_subscription_center_mock_client/MockClient.php');
+    $subscriptions = new MockElomentaryClient();
+    $subscriptions = $subscriptions->api('contact')->subscriptions(1)->search('*');
+    $subscriptions = $subscriptions['elements'];
+
+    // Set configurations.
+    $configured = array(
+      1 => array(
+        '#id' => 'should_not_exist',
+        '#enabled' => FALSE,
+        '#title' => 'This title should not be shown.',
+        '#description' => 'This description should not be shown.',
+        '#weight' => 0,
+      ),
+      2 => array(
+        '#id' => 'data_from_eloqua',
+        '#enabled' => TRUE,
+        '#weight' => 1,
+      ),
+      3 => array(
+        '#id' => 'data_overridden',
+        '#enabled' => TRUE,
+        '#title' => 'Visible and has been overridden',
+        '#description' => 'This description has been overridden.',
+        '#weight' => 2,
+      ),
+    );
+    eloqua_subscription_center_set_group_configs($configured);
+
+    // Visit the subscription center page.
+    $this->drupalGet('subscription-center/example.com/' . $this->valid_cid);
+
+    // Ensure disabled group #1 above is not on the page.
+    $this->assertNoText('This title should not be shown.', 'Disabled e-mail group title not shown.');
+    $this->assertNoText('This description should not be shown.', 'Disabled e-mail group description not shown.');
+    $this->assertNoFieldByName('should_not_exist', NULL, 'Disabled e-mail group checkbox not shown.');
+
+    // Ensure enabled group #2 is shown with default Eloqua title/descriptions.
+    $this->assertText($subscriptions[2]['emailGroup']['name'], 'Default group title text found.');
+    $this->assertText($subscriptions[2]['emailGroup']['description'], 'Default group description text found.');
+    $this->assertFieldByName($configured[2]['#id'], '1', 'Default group checkbox found and subscribed, per API.');
+
+    // Ensure enabled group #3 is shown with overridden title/descriptions.
+    $this->assertText($configured[3]['#title'], 'Overridden group title text found.');
+    $this->assertText($configured[3]['#description'], 'Overridden group description text found.');
+    $this->assertFieldByName($configured[3]['#id'], '1', 'Overridden group checkbox found and subscribed by default.');
+
+    // Set the default to "unsubscribed" and check that it sticks.
+    variable_set('eloqua_subscription_center_default_status', FALSE);
+    $this->drupalGet('subscription-center/example.com/' . $this->valid_cid);
+    $this->assertFieldByName($configured[2]['#id'], '1', 'Default group checkbox found and subscribed, per API (no change).');
+    $this->assertFieldByName($configured[3]['#id'], '0', 'Overridden group checkbox found and unsubscribed per configuration.');
+  }
+
 }
