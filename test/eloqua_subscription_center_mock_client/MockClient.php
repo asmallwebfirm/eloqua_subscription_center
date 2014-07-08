@@ -49,6 +49,14 @@ class MockElomentaryClient {
   }
 
   /**
+   * Mocks the Elomentary e-mail group client.
+   */
+  public function groups() {
+    $this->active_api = 'email_groups';
+    return $this;
+  }
+
+  /**
    * Mocks all Elomentary "show" method calls.
    */
   public function show($id, $depth = null, $extensions = null) {
@@ -97,6 +105,35 @@ class MockElomentaryClient {
               'name' => 'Visible and overridden',
               'description' => 'This description should be overridden.',
             ),
+          ),
+        ));
+        break;
+
+      case 'email_groups';
+        return array('elements' => array(
+          1 => array(
+            'type' => 'EmailGroup',
+            'id' => 1,
+            'name' => 'This should be hidden',
+            'description' => 'This test group should not be enabled.',
+          ),
+          2 => array(
+            'type' => 'EmailGroup',
+            'id' => 2,
+            'name' => 'Visible, default subscribed',
+            'description' => 'This is the description from Eloqua.',
+          ),
+          3 => array(
+            'type' => 'EmailGroup',
+            'id' => 3,
+            'name' => 'Visible and overridden',
+            'description' => 'This description should be overridden.',
+          ),
+          4 => array(
+            'type' => 'EmailGroup',
+            'id' => 4,
+            'name' => 'New from e-mail group API',
+            'description' => 'This group only shows up when searching the e-mail group API.',
           ),
         ));
         break;

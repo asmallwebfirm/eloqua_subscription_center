@@ -255,6 +255,11 @@ class EloquaSubscriptionCenterBehaviourTestBase extends DrupalWebTestCase {
     $this->subscriptions = new MockElomentaryClient();
     $this->subscriptions = $this->subscriptions->api('contact')->subscriptions(1)->search('*');
     $this->subscriptions = $this->subscriptions['elements'];
+
+    // Get e-mail groups from mock Eloqua API.
+    $this->email_groups = new MockElomentaryClient();
+    $this->email_groups = $this->email_groups->api('email')->groups()->search('*');
+    $this->email_groups = $this->email_groups['elements'];
   }
 
   /**
@@ -302,6 +307,12 @@ class EloquaSubscriptionCenterBehaviourTestBase extends DrupalWebTestCase {
    * @var array
    */
   protected $subscriptions = array();
+
+  /**
+   * E-mail group data, pulled from the mock Elomentary API.
+   * @var array
+   */
+  protected $email_groups = array();
 }
 
 /**
@@ -625,6 +636,67 @@ class EloquaSubscriptionCenterAdminConfigTest extends EloquaSubscriptionCenterBe
     $this->assertFieldByName($var, $edit[$var], 'Redirect flag loaded correctly in the field.');
     $var = 'eloqua_subscription_center_form_responses';
     $this->assertEqual(variable_get($var, array()), array('redirect' => 'redirect', 'message' => 'message'), 'Message an redirect flags saved as expected.');
+  }
+
+  /**
+   * Test pulling fresh e-mail group subscriptions from Eloqua.
+   */
+  function testRefreshEmailGroupSubscriptionsFromEloqua() {
+    // Log the admin user in and check the Eloqua API config page.
+    $this->drupalLogin($this->admin);
+    $this->drupalGet('admin/config/system/eloqua-subscription-center');
+    $defaults = array('eloqua_subscription_center_form_name' => 'testform');
+
+    // Ensure the "no groups exist" message is shown by default.
+    $this->assertText('Looks like no e-mail groups from Eloqua have yet been loaded.', '"No e-mail groups loaded" message shown when no groups have been configured.');
+    $this->assertFieldById('edit-load-from-elq', 'Pull latest groups from Eloqua', 'Found the "Pull latest groups from Eloqua" button.');
+
+    // Attempt to load groups from the API.
+    $this->drupalPost(NULL, $defaults, 'Pull latest groups from Eloqua');
+    $count = count($this->email_groups);
+    $this->assertText('Successfully retrieved ' . $count . ' new groups from Eloqua.', 'Confirmation message displayed as expected.');
+
+    // Ensure all values from the API were saved and retrieved as expected.
+    $fields = array('enabled', 'title', 'id', 'description', 'weight');
+    foreach ($this->email_groups as $id => $group) {
+      foreach ($fields as $field) {
+        $name = 'eloqua_subscription_center_groups[' . $id . '][' . $field .']';
+        $value = isset($group['#' . $field]) ? $group['#' . $field] : NULL;
+        $this->assertFieldByName($name, $value, format_string('Found %field field with value "%value" for group %group.', array(
+          '%field' => $field,
+          '%value' => $value,
+          '%group' => $id,
+        )));
+      }
+    }
+
+    // Reset configurations to a known list of three.
+    eloqua_subscription_center_set_group_configs($this->configurations);
+    $defaults['eloqua_subscription_center_groups[2][title]'] = 'Title';
+    $this->drupalGet('admin/config/system/eloqua-subscription-center');
+    $this->drupalPost(NULL, $defaults, 'Pull latest groups from Eloqua');
+    $this->assertText('Successfully retrieved 1 new groups from Eloqua.', 'Confirmation message displayed as expected.');
+
+    // Loop through configurations and ensure fields are populated as expected.
+    $fields = array('enabled', 'title', 'id', 'description', 'weight');
+    foreach ($this->configurations as $id => $config) {
+      foreach ($fields as $field) {
+        $name = 'eloqua_subscription_center_groups[' . $id . '][' . $field . ']';
+        $value = isset($config['#' . $field]) ? $config['#' . $field] : NULL;
+        $this->assertFieldByName($name, $value, format_string('Found %field field with value "%value" for group %group.', array(
+          '%field' => $field,
+          '%value' => $value,
+          '%group' => $id,
+        )));
+      }
+    }
+
+    // Ensure defaults pulled from Eloqua match expected values.
+    $this->assertFieldByXPath('//input[@name="eloqua_subscription_center_groups[4][enabled]" and not(@checked)]', NULL, 'Subscription management checkbox from Eloqua defaulted to unchecked.');
+    $this->assertFieldByName('eloqua_subscription_center_groups[4][title]', $this->email_groups[4]['name'], 'Pulled e-mail group name from Eloqua.');
+    $this->assertFieldByName('eloqua_subscription_center_groups[4][id]', 4, 'Pulled e-mail group id from Eloqua.');
+    $this->assertFieldByName('eloqua_subscription_center_groups[4][description]', $this->email_groups[4]['description'], 'Pulled e-mail group name from Eloqua.');
+    $this->assertFieldByName('eloqua_subscription_center_groups[4][weight]', 0, 'E-mail group order defaulted to 0.');
   }
 
   /**

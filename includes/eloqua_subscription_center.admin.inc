@@ -115,7 +115,7 @@ function eloqua_subscription_center_admin($form, &$form_state) {
   $form['response']['eloqua_subscription_center_confirmation_redirect'] = array(
     '#title' => t('Confirmation redirect'),
     '#type' => 'textfield',
-    '#description' => t('An internal Drupal path or URL to which users will be redirected upon successul preference submission.'),
+    '#description' => t('An internal Drupal path or URL to which users will be redirected upon successful preference submission.'),
     '#default_value' => variable_get('eloqua_subscription_center_confirmation_redirect', ''),
     '#element_validate' => array('eloqua_subscription_center_redirect_validate'),
     '#states' => array(
@@ -129,82 +129,96 @@ function eloqua_subscription_center_admin($form, &$form_state) {
   );
 
   // Allow configuration of specific e-mail groups and their display.
-  if ($elqRequest = eloqua_rest_api_client('2.0')) {
-    if ($email_groups = eloqua_subscription_center_get_group_configs()) {
-      // Create a collapsed fieldset that contains e-mail groups.
-      $form['eloqua_subscription_center_groups'] = array(
-        '#title' => t('E-mail groups'),
-        #'#type' => 'fieldset',
-        #'#collapsible' => TRUE,
-        #'#collapsed' => TRUE,
-        '#tree' => TRUE,
-        '#type' => 'vertical_tabs',
+  if ($email_groups = eloqua_subscription_center_get_group_configs()) {
+    // Create a collapsed fieldset that contains e-mail groups.
+    $form['eloqua_subscription_center_groups'] = array(
+      '#title' => t('E-mail groups'),
+      '#tree' => TRUE,
+      '#type' => 'vertical_tabs',
+    );
+
+    // Iterate through all returned e-mail groups and display settings forms.
+    foreach ($email_groups as $id => $group) {
+
+      // Default values.
+      $title = isset($group['#title']) ? $group['#title'] : NULL;
+      $enabled = isset($group['#enabled']) ? $group['#enabled'] : FALSE;
+      $description = isset($group['#description']) ? $group['#description'] : NULL;
+      $weight = isset($group['#weight']) ? $group['#weight'] : 0;
+      $form_element_id = isset($group['#id']) ? $group['#id'] : $id;
+
+      // Identify this e-mail group.
+      $form['eloqua_subscription_center_groups'][$id] = array(
+        '#title' => $title,
+        '#type' => 'fieldset',
+        '#collapsible' => FALSE,
+        '#weight' => $weight,
       );
 
-      // Iterate through all returned e-mail groups and display settings forms.
-      foreach ($email_groups as $id => $group) {
+      // Whether or not to show or hide this group.
+      $form['eloqua_subscription_center_groups'][$id]['enabled'] = array(
+        '#title' => t('Allow subscription management for this e-mail group'),
+        '#type' => 'checkbox',
+        '#default_value' => $enabled,
+      );
 
-        // Default values.
-        $title = isset($group['#title']) ? $group['#title'] : NULL;
-        $enabled = isset($group['#enabled']) ? $group['#enabled'] : FALSE;
-        $description = isset($group['#description']) ? $group['#description'] : NULL;
-        $weight = isset($group['#weight']) ? $group['#weight'] : 0;
-        $form_element_id = isset($group['#id']) ? $group['#id'] : $id;
+      // Provide the ability to override the title.
+      $form['eloqua_subscription_center_groups'][$id]['title'] = array(
+        '#title' => t('Display title'),
+        '#description' => t('The title used to identify this subscription group to end-users.'),
+        '#type' => 'textfield',
+        '#default_value' => $title,
+        '#required' => TRUE,
+      );
 
-        // Identify this e-mail group.
-        $form['eloqua_subscription_center_groups'][$id] = array(
-          '#title' => $title,
-          '#type' => 'fieldset',
-          '#collapsible' => FALSE,
-          '#weight' => $weight,
-        );
+      // Provide the ability to specify field element names.
+      $form['eloqua_subscription_center_groups'][$id]['id'] = array(
+        '#title' => t('Form element name'),
+        '#description' => t('Used as the parameter name when POSTing subscription preferences to Eloqua.'),
+        '#type' => 'textfield',
+        '#default_value' => $form_element_id,
+        '#required' => TRUE,
+      );
 
-        // Whether or not to show or hide this group.
-        $form['eloqua_subscription_center_groups'][$id]['enabled'] = array(
-          '#title' => t('Allow subscription management for this e-mail group'),
-          '#type' => 'checkbox',
-          '#default_value' => $enabled,
-        );
+      // Provide the ability to override the description.
+      $form['eloqua_subscription_center_groups'][$id]['description'] = array(
+        '#title' => t('Display description'),
+        '#description' => t('The description used to identify this subscription group to end-users.'),
+        '#type' => 'textfield',
+        '#default_value' => $description,
+      );
 
-        // Provide the ability to override the title.
-        $form['eloqua_subscription_center_groups'][$id]['title'] = array(
-          '#title' => t('Display title'),
-          '#description' => t('The title used to identify this subscription group to end-users.'),
-          '#type' => 'textfield',
-          '#default_value' => $title,
-          '#required' => TRUE,
-        );
-
-        // Provide the ability to specify field element names.
-        $form['eloqua_subscription_center_groups'][$id]['id'] = array(
-          '#title' => t('Form element name'),
-          '#description' => t('Used as the parameter name when POSTing subscription preferences to Eloqua.'),
-          '#type' => 'textfield',
-          '#default_value' => $form_element_id,
-          '#required' => TRUE,
-        );
-
-        // Provide the ability to override the description.
-        $form['eloqua_subscription_center_groups'][$id]['description'] = array(
-          '#title' => t('Display description'),
-          '#description' => t('The description used to identify this subscription group to end-users.'),
-          '#type' => 'textfield',
-          '#default_value' => $description,
-        );
-
-        // Provide the ability to override the order (just a weight field).
-        $form['eloqua_subscription_center_groups'][$id]['weight'] = array(
-          '#title' => t('Order'),
-          '#description' => t('A number, indicating the sort order in which this group should appear on the page.'),
-          '#type' => 'textfield',
-          '#default_value' => $weight,
-        );
-      }
-
-      // Add a validation handler to handle variable/config preparation.
-      $form['#validate'][] = 'eloqua_subscription_center_prepare_group_configs';
+      // Provide the ability to override the order (just a weight field).
+      $form['eloqua_subscription_center_groups'][$id]['weight'] = array(
+        '#title' => t('Order'),
+        '#description' => t('A number, indicating the sort order in which this group should appear on the page.'),
+        '#type' => 'textfield',
+        '#default_value' => $weight,
+      );
     }
+
+    // Add a validation handler to handle variable/config preparation.
+    $form['#validate'][] = 'eloqua_subscription_center_prepare_group_configs';
   }
+  else {
+    // If no e-mail groups were detected, provide messaging on how to load them
+    // from the API.
+    $form['eloqua_subscription_center_groups'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('E-mail groups not yet loaded'),
+      '#description' => t('Looks like no e-mail groups from Eloqua have yet been loaded. To get started, click the "!button_text" button below.', array(
+        '!button_text' => t('Pull latest groups from Eloqua'),
+      )),
+    );
+  }
+
+  // Add a custom form submit button to load the latest e-mail groups.
+  $form['actions']['load_from_elq'] = array(
+    '#type' => 'submit',
+    '#value' => t('Pull latest groups from Eloqua'),
+    '#weight' => 10,
+    '#submit' => array('eloqua_subscription_center_refresh_groups_submit'),
+  );
 
   // Add custom validation and submission handlers; ensure ours come last.
   $form = system_settings_form($form);
@@ -318,6 +332,47 @@ function eloqua_subscription_center_admin_submit($form, &$form_state) {
 
     // Set an HTTP header for debugging / testing purposes.
     drupal_add_http_header('X-Menu-Rebuilt', TRUE);
+  }
+}
+
+/**
+ * Submit handler, seperate from normal submit handler execution, which loads
+ * the latest Eloqua e-mail groups from Eloqua. Values are merged in such that
+ * existing configurations are not overridden.
+ */
+function eloqua_subscription_center_refresh_groups_submit($form, &$form_state) {
+  if ($client = eloqua_rest_api_client('2.0')) {
+    $existing = eloqua_subscription_center_get_group_configs();
+
+    // Load e-mail groups from Eloqua and iterate through them and mold them to
+    // match the form expected by the group configuration.
+    $from_eloqua = array();
+    $groups = $client->api('email')->groups()->search('*');
+    $groups = isset($groups['elements']) ? $groups['elements'] : array();
+    foreach ($groups as $group) {
+      $from_eloqua[$group['id']] = array(
+        '#enabled' => FALSE,
+        '#title' => $group['name'],
+        '#id' => $group['id'],
+        '#description' => $group['description'],
+        '#weight' => 0,
+      );
+    }
+
+    // To ensure we do not overwrite any data, only find and save new groups.
+    $new_groups = array_diff_key($from_eloqua, $existing);
+    eloqua_subscription_center_set_group_configs($existing + $new_groups);
+
+    // Provide a confirmation message.
+    drupal_set_message(t('Successfully retrieved %num new groups from Eloqua.', array(
+      '%num' => count($new_groups),
+    )), 'status');
+  }
+  else {
+    // Link to the Eloqua REST API configuration page for configuration.
+    drupal_set_message(t('Unable to load the Eloqua API client. Make sure Eloqua REST API !is_installed_and_configured_properly.', array(
+      '!is_installed_and_configured_properly' => l(t('is_installed and configured properly'), 'admin/config/services/eloqua'),
+    )), 'warning');
   }
 }
 
