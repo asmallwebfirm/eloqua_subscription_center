@@ -30,6 +30,10 @@ function eloqua_subscription_center_page($email_domain, $contact_id) {
     ),
   ), 'eloqua_subscription_center_robots');
 
+  // Ensure that this page isn't cached.
+  drupal_page_is_cacheable(FALSE);
+  drupal_add_http_header('cache-control', 'no-cache, no-store, must-revalidate');
+
   // Only respond if we're properly configured to use Eloqua's REST API.
   if ($elqReq = eloqua_rest_api_client('2.0')) {
     $contacts = $elqReq->api('contacts');
@@ -52,9 +56,6 @@ function eloqua_subscription_center_page($email_domain, $contact_id) {
       $form_state = array();
       $form_state['build_info']['args']['contact'] = $contact;
       $form_state['build_info']['args']['subscriptions'] = $subscriptions['elements'];
-
-      // Ensure that this page isn't cached.
-      drupal_page_is_cacheable(FALSE);
 
       return drupal_build_form('eloqua_subscription_center_form', $form_state);
     }

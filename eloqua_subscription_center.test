@@ -336,16 +336,22 @@ class EloquaSubscriptionCenterEndUserTest extends EloquaSubscriptionCenterBehavi
     $this->drupalGet('subscription-center/example.com/' . $this->invalid_cid);
     $this->assertRaw('<meta name="robots" content="noindex, nofollow, noarchive" />', 'Found robots meta tags on subscription center page.');
     $this->assertEqual($this->drupalGetHeader(':status'), 'HTTP/1.1 404 Not Found', 'Invalid contact returns 404.');
+    $this->assertNotEqual($this->drupalGetHeader('x-drupal-cache'), 'HIT', 'Page was not cached.');
+    $this->assertEqual($this->drupalGetHeader('cache-control'), 'no-cache, no-store, must-revalidate', 'Page is not HTTP cacheable.');
 
     // Ensure a valid contact with invalid domain results in a 403 (and tags).
     $this->drupalGet('subscription-center/notexample.com/' . $this->valid_cid);
     $this->assertRaw('<meta name="robots" content="noindex, nofollow, noarchive" />', 'Found robots meta tags on subscription center page.');
     $this->assertEqual($this->drupalGetHeader(':status'), 'HTTP/1.1 403 Forbidden', 'Valid contact with mismatching domain returns 403.');
+    $this->assertNotEqual($this->drupalGetHeader('x-drupal-cache'), 'HIT', 'Page was not cached.');
+    $this->assertEqual($this->drupalGetHeader('cache-control'), 'no-cache, no-store, must-revalidate', 'Page is not HTTP cacheable.');
 
     // Ensure a valid contact with matched domain results in a 200 (and tags).
     $this->drupalGet('subscription-center/example.com/' . $this->valid_cid);
     $this->assertRaw('<meta name="robots" content="noindex, nofollow, noarchive" />', 'Found robots meta tags on subscription center page.');
     $this->assertEqual($this->drupalGetHeader(':status'), 'HTTP/1.1 200 OK', 'Valid contact with matching domain returns 200.');
+    $this->assertNotEqual($this->drupalGetHeader('x-drupal-cache'), 'HIT', 'Page was not cached.');
+    $this->assertEqual($this->drupalGetHeader('cache-control'), 'no-cache, no-store, must-revalidate', 'Page is not HTTP cacheable.');
 
     // Ensure all default forms fields, values, and elements are present.
     $this->assertFieldByName('op', 'Update subscription', 'Found "update subscription" button.');
@@ -357,6 +363,8 @@ class EloquaSubscriptionCenterEndUserTest extends EloquaSubscriptionCenterBehavi
     $this->drupalPost(NULL, array(), 'Update subscription');
     $this->assertEqual($current_url, $this->getUrl(), 'Form submission did not redirect anywhere by default.');
     $this->assertNoFieldByXpath('//div[@class="messages status"]', NULL, 'Form submission did not trigger message by default.');
+    $this->assertNotEqual($this->drupalGetHeader('x-drupal-cache'), 'HIT', 'Page was not cached.');
+    $this->assertEqual($this->drupalGetHeader('cache-control'), 'no-cache, no-store, must-revalidate', 'Page is not HTTP cacheable.');
   }
 
   /**
